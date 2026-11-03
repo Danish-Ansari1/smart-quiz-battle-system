@@ -50,3 +50,10 @@ SmartQuizBattleSystem/
 │           │   └── LeaderboardFrame.java
 │           └── Main.java
 └── README.md
+---
+
+## 👥 Team Members (Project Contributors)
+* **Student 1 Name:** Adnan Ahsan
+* **Student 2 Name:** Amit Kumar
+* **Student 3 Name:** Ashish Kumar
+* **Student 4 Name:** Danish Ansari
