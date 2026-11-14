@@ -1,27 +1,41 @@
-# Smart Quiz Battle System
+# 🚀 Smart Quiz Battle System (Enterprise Edition)
 
-The **Smart Quiz Battle System** is a Java-based desktop application designed to make learning engaging through timed multiple-choice questions, automatic score calculation, result reviews, and a persistent database-backed leaderboard[span_0](start_span)[span_0](end_span)[span_1](start_span)[span_1](end_span)[span_2](start_span)[span_2](end_span).
+The **Smart Quiz Battle System** is a modern, production-level Java desktop application designed for interactive assessments, real-time quizzes, and comprehensive student performance tracking. It features an enterprise-grade UI built entirely with Java Swing and a robust MySQL backend.
 
 ---
 
-## 🚀 Features
+## ✨ Key Features
 
-* **Player Setup:** Enter a player name and choose from multiple categories before starting the quiz[span_3](start_span)[span_3](end_span).
-* **Multiple-Choice Quiz:** Displays one question at a time with four distinct answer options[span_4](start_span)[span_4](end_span).
-* **Countdown Timer:** A built-in timer counts down for each question; automatically moves forward when time expires[span_5](start_span)[span_5](end_span).
-* **Automatic Scoring:** Instantly checks answers, awards points, and calculates final percentages[span_6](start_span)[span_6](end_span).
-* **Result Review & Persistence:** Shows total questions, correct/incorrect answers, performance metrics, and saves history into MySQL[span_7](start_span)[span_7](end_span).
-* **Leaderboard:** Ranks top players in descending order based on their scores[span_8](start_span)[span_8](end_span).
+### 1. Enterprise Welcome Portal (`WelcomeFrame`)
+* **Interactive Landing Page:** A clean SaaS-style entry portal welcoming users with system highlights and system metrics before entering the authentication gate.
+* **Seamless Navigation:** Smooth transition into the portal with hover effects and modern button animations.
+
+### 2. Secure Role-Based Authentication (`Login/Signup`)
+* **Dual Roles:** Secure registration and login supporting both **Students** and **Teacher Admins**.
+* **Input Validation & Security:** Built-in validation, password masking with a "Show Password" toggle, and strict error handling for unauthorized attempts.
+
+### 3. Fullscreen Interactive Quiz Engine (`QuizEngineFrame`)
+* **Immersive Fullscreen Mode:** Opens automatically in maximized mode with custom responsive option cards.
+* **Live Countdown Timer:** Real-time visual countdown for each question that triggers color alerts when time is running low.
+* **Dynamic Progress Tracking:** Clear progress bars and question counters (`Question X of Y`).
+* **Instant Performance Report:** Popup summary showing final scores, percentages, correct/wrong counts, and a scrollable question-by-question review sheet.
+
+### 4. Teacher & Admin Oversight Dashboard (`AdminFrame`)
+* **Executive KPI Cards:** Live metric cards displaying Total Attempts, Top Performer, and Class Average Accuracy.
+* **Live Leaderboard:** Ranks students automatically based on scores and percentages with Gold, Silver, and Bronze highlighting.
+* **Student Answer Sheet Audit:** Dedicated audit logs showing exact student selections, correct answers, and status (`CORRECT`, `WRONG`, `SKIPPED`) with color-coded badges.
+* **Drilldown Inspection:** Double-click any student row to instantly inspect their complete individual answer sheet breakdown.
+* **Question Bank Manager:** Built-in form allowing teachers to add new questions dynamically to any category (Java Programming, Computer Science, etc.).
 
 ---
 
 ## 🛠️ Technology Stack
 
-* **Language:** Java[span_9](start_span)[span_9](end_span)
-* **GUI Framework:** Java Swing (Windows, Labels, Buttons, Tables)[span_10](start_span)[span_10](end_span)
-* **Database:** MySQL[span_11](start_span)[span_11](end_span)
-* **Connectivity:** JDBC (Java Database Connectivity)[span_12](start_span)[span_12](end_span)
-* **Development Environment:** VS Code / IntelliJ IDEA / Eclipse (`JDK 8+`)[span_13](start_span)[span_13](end_span)
+* **Language:** Java (`JDK 8+`)
+* **GUI Framework:** Java Swing (Custom Card Layouts, GridBagLayout, Styled Components)
+* **Database:** MySQL
+* **Connectivity:** JDBC (Java Database Connectivity)
+* **Development Environment:** IntelliJ IDEA / Eclipse / VS Code
 
 ---
 
@@ -32,28 +46,19 @@ SmartQuizBattleSystem/
 ├── lib/
 │   └── mysql-connector-j-x.x.x.jar   <-- MySQL JDBC Driver
 ├── src/
-│   └── com/
-│       └── quiz/
-│           ├── db/
-│           │   └── DatabaseConnection.java
-│           ├── model/
-│           │   ├── Player.java
-│           │   ├── Question.java
-│           │   └── QuizResult.java
-│           ├── dao/
-│           │   ├── QuestionDAO.java
-│           │   └── QuizResultDAO.java
-│           ├── ui/
-│           │   ├── WelcomeFrame.java
-│           │   ├── QuizFrame.java
-│           │   ├── ResultFrame.java
-│           │   └── LeaderboardFrame.java
-│           └── Main.java
-└── README.md
----
-
-## 👥 Team Members (Project Contributors)
-* **Student 1 Name:** Adnan Ahsan
-* **Student 2 Name:** Amit Kumar
-* **Student 3 Name:** Ashish Kumar
-* **Student 4 Name:** Danish Ansari
+│   ├── Main.java                     <-- Application Entry Point (Welcome Portal)
+│   ├── Player.java                   <-- Player Session Model
+│   ├── Question.java                 <-- Question Entity Model
+│   ├── DBConnection.java             <-- MySQL Database Connection Handler
+│   ├── DatabaseDAO.java              <-- Database Data Access Object (Queries & Logs)
+│   ├── WelcomeFrame.java             <-- Enterprise Landing Page
+│   ├── LoginSignUpFrame.java         <-- Secure Authentication UI
+│   ├── DashboardFrame.java           <-- Student Category & Dashboard Portal
+│   ├── QuizEngineFrame.java          <-- Fullscreen Quiz Runner & Review Sheet
+│   └── AdminFrame.java               <-- Teacher Control Center & Audit Panel
+└── README.me
+* 👥 Project Contributors
+* Amit Kumar
+* Adnan Ahsan
+* Ashish Kumar
+* Danish Ansari

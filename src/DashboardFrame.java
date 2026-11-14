@@ -1,382 +1,748 @@
 import javax.swing.*;
+import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
+import javax.swing.border.MatteBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
-import javax.swing.table.TableRowSorter;
+import javax.swing.table.JTableHeader;
 import java.awt.*;
-import java.util.ArrayList;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.File;
+import java.io.FileWriter;
 import java.util.List;
-
-// --- Enterprise Leaderboard Cell Renderer (Medals, Current User Highlight & Color Coding) ---
-class DashboardLeaderboardRenderer extends DefaultTableCellRenderer {
-    private String currentUsername;
-
-    public DashboardLeaderboardRenderer(String currentUsername) {
-        this.currentUsername = currentUsername;
-    }
-
-    @Override
-    public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-        Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-
-        // Convert view row to model row so colors stay accurate even when searching/filtering
-        int modelRow = table.convertRowIndexToModel(row);
-        String rowStudent = String.valueOf(table.getModel().getValueAt(modelRow, 1));
-        boolean isCurrentUser = rowStudent.equalsIgnoreCase(currentUsername);
-
-        // Alignment: Rank and numeric columns centered, Student Name & Category left-aligned
-        if (column == 0 || column >= 3) {
-            setHorizontalAlignment(SwingConstants.CENTER);
-        } else {
-            setHorizontalAlignment(SwingConstants.LEFT);
-        }
-
-        // Format Rank Column with Medals (Column 0)
-        if (column == 0 && value != null) {
-            String rankStr = String.valueOf(value);
-            if (modelRow == 0) setText("🥇 " + rankStr + "st");
-            else if (modelRow == 1) setText("🥈 " + rankStr + "nd");
-            else if (modelRow == 2) setText("🥉 " + rankStr + "rd");
-            else setText("#" + rankStr);
-        }
-
-        // Add "(YOU)" badge to the logged-in student's name (Column 1)
-        if (column == 1 && isCurrentUser) {
-            setText(rowStudent + " ⭐ (YOU)");
-        }
-
-        // Background & Font Styling
-        if (!isSelected) {
-            c.setForeground(new Color(44, 62, 80));
-
-            if (isCurrentUser) {
-                // Highlight logged-in student's rows in soft cyan/blue
-                c.setBackground(new Color(214, 234, 248));
-                c.setFont(new Font("Arial", Font.BOLD, 13));
-            } else if (modelRow == 0) {
-                c.setBackground(new Color(255, 243, 176)); // Rank 1: Soft Gold
-                c.setFont(new Font("Arial", Font.BOLD, 13));
-            } else if (modelRow == 1) {
-                c.setBackground(new Color(232, 234, 237)); // Rank 2: Soft Silver
-                c.setFont(new Font("Arial", Font.BOLD, 13));
-            } else if (modelRow == 2) {
-                c.setBackground(new Color(245, 222, 199)); // Rank 3: Soft Bronze
-                c.setFont(new Font("Arial", Font.BOLD, 13));
-            } else {
-                // Striped alternating rows
-                c.setBackground(row % 2 == 0 ? Color.WHITE : new Color(248, 249, 250));
-                c.setFont(new Font("Arial", Font.PLAIN, 12));
-            }
-
-            // Color-code Percentage Column (Column 7) based on performance
-            if (column == 7 && value != null) {
-                try {
-                    double pct = Double.parseDouble(String.valueOf(value).replace("%", "").trim());
-                    c.setFont(new Font("Arial", Font.BOLD, 12));
-                    if (pct >= 75.0) {
-                        c.setForeground(new Color(39, 174, 96)); // High Score: Green
-                    } else if (pct >= 50.0) {
-                        c.setForeground(new Color(211, 84, 0));  // Average Score: Orange
-                    } else {
-                        c.setForeground(new Color(192, 57, 43)); // Low Score: Red
-                    }
-                } catch (NumberFormatException ignored) {}
-            }
-        }
-        return c;
-    }
-}
 
 public class DashboardFrame extends JFrame {
     private Player player;
-    private JComboBox<String> categoryBox;
-    private JTable leaderboardTable;
-    private TableRowSorter<DefaultTableModel> rowSorter;
-
-    // Filter Controls & KPI Labels
-    private JTextField txtSearch;
+    private JComboBox<String> categoryDropdown;
     private JComboBox<String> filterCategoryBox;
-    private JCheckBox chkOnlyMe;
+    private JTextField searchField;
+    private JCheckBox chkMyAttempts;
     private JCheckBox chkAutoSync;
-    private Timer autoRefreshTimer;
+    private JTable leaderboardTable;
+    private DefaultTableModel tableModel;
+    private Timer autoSyncTimer;
 
-    private JLabel lblTotalAttemptsVal;
-    private JLabel lblTopScorerVal;
-    private JLabel lblMyBestVal;
-    private JLabel lblAvgScoreVal;
+    // KPI & Profile Labels
+    private JLabel lblTotalBattlesVal, lblChampionVal, lblBestScoreVal, lblPlatformAvgVal;
+    private JLabel lblRankBadge, lblPersonalAvg, lblStudentStatsSub;
+    private JProgressBar accuracyMeter;
+
+    // Enterprise Color Palette
+    private final Color BG_COLOR = new Color(241, 245, 249);        // Slate 100
+    private final Color CARD_BG = Color.WHITE;
+    private final Color HEADER_BG = new Color(15, 23, 42);          // Slate 900
+    private final Color PROFILE_BG = new Color(30, 41, 59);         // Slate 800
+    private final Color PRIMARY_COLOR = new Color(37, 99, 235);     // Royal Blue
+    private final Color PRIMARY_HOVER = new Color(29, 78, 216);
+    private final Color SUCCESS_COLOR = new Color(22, 163, 74);     // Emerald Green
+    private final Color SUCCESS_HOVER = new Color(21, 128, 61);
+    private final Color WARNING_COLOR = new Color(217, 119, 6);     // Amber Gold
+    private final Color DANGER_COLOR = new Color(220, 38, 38);      // Crimson Red
+    private final Color PURPLE_COLOR = new Color(124, 58, 237);     // Violet
+    private final Color TEXT_DARK = new Color(15, 23, 42);
+    private final Color TEXT_MUTED = new Color(100, 116, 139);
+    private final Color BORDER_COLOR = new Color(226, 232, 240);
 
     public DashboardFrame(Player player) {
         this.player = player;
+
         setTitle("Student Dashboard - Smart Quiz Battle System");
-        setSize(980, 660);
+        setSize(1220, 780);
+        setMinimumSize(new Dimension(1000, 680));
+        setExtendedState(JFrame.MAXIMIZED_BOTH); // Full Screen Ready
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
+        getContentPane().setBackground(BG_COLOR);
         setLayout(new BorderLayout(0, 0));
 
-        // 1. Top Navigation Header
-        JPanel topPanel = new JPanel(new BorderLayout());
-        topPanel.setBackground(new Color(30, 41, 59));
-        topPanel.setBorder(new EmptyBorder(12, 24, 12, 24));
+        // ================= 1. TOP ENTERPRISE NAVBAR =================
+        JPanel topNav = new JPanel(new BorderLayout());
+        topNav.setBackground(HEADER_BG);
+        topNav.setBorder(new EmptyBorder(14, 28, 14, 28));
 
-        JLabel lblWelcome = new JLabel("🎓 Welcome, " + player.getUsername() + "  |  Student Arena");
+        // Left: Avatar + Welcome Title
+        JPanel navLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 0));
+        navLeft.setOpaque(false);
+
+        JPanel avatarCircle = createAvatarBadge(player.getUsername());
+
+        JPanel titleBox = new JPanel();
+        titleBox.setLayout(new BoxLayout(titleBox, BoxLayout.Y_AXIS));
+        titleBox.setOpaque(false);
+
+        JLabel lblWelcome = new JLabel("Welcome, " + player.getUsername() + "  |  Student Arena");
+        lblWelcome.setFont(new Font("Segoe UI", Font.BOLD, 19));
         lblWelcome.setForeground(Color.WHITE);
-        lblWelcome.setFont(new Font("Arial", Font.BOLD, 18));
 
-        JButton btnLogout = new JButton("Logout 🚪");
-        btnLogout.setFont(new Font("Arial", Font.BOLD, 12));
-        btnLogout.setBackground(new Color(231, 76, 60));
-        btnLogout.setForeground(Color.WHITE);
-        btnLogout.setFocusPainted(false);
+        JLabel lblSubStatus = new JLabel("● Online Session Active  •  Smart Assessment Portal");
+        lblSubStatus.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        lblSubStatus.setForeground(new Color(74, 222, 128)); // Soft Green Dot
+
+        titleBox.add(lblWelcome);
+        titleBox.add(lblSubStatus);
+
+        navLeft.add(avatarCircle);
+        navLeft.add(titleBox);
+
+        // Right: Role Tag + Logout Button
+        JPanel navRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 4));
+        navRight.setOpaque(false);
+
+        JLabel lblRolePill = new JLabel(" CANDIDATE PORTAL ");
+        lblRolePill.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        lblRolePill.setForeground(new Color(147, 197, 253));
+        lblRolePill.setBorder(new CompoundBorder(
+                new LineBorder(new Color(59, 130, 246), 1, true),
+                new EmptyBorder(4, 10, 4, 10)
+        ));
+
+        JButton btnLogout = createInteractiveButton("Sign Out →", DANGER_COLOR, new Color(185, 28, 28), 115, 34);
         btnLogout.addActionListener(e -> {
-            if (autoRefreshTimer != null) autoRefreshTimer.stop();
+            if (autoSyncTimer != null) autoSyncTimer.stop();
             dispose();
             new LoginSignUpFrame().setVisible(true);
         });
 
-        topPanel.add(lblWelcome, BorderLayout.WEST);
-        topPanel.add(btnLogout, BorderLayout.EAST);
-        add(topPanel, BorderLayout.NORTH);
+        navRight.add(lblRolePill);
+        navRight.add(btnLogout);
 
-        // 2. Main Center Container
-        JPanel centerPanel = new JPanel(new BorderLayout(12, 12));
-        centerPanel.setBackground(new Color(241, 245, 249));
-        centerPanel.setBorder(new EmptyBorder(15, 20, 15, 20));
+        topNav.add(navLeft, BorderLayout.WEST);
+        topNav.add(navRight, BorderLayout.EAST);
+        add(topNav, BorderLayout.NORTH);
 
-        // --- Upper Section: KPI Summary Cards + Quiz Launcher ---
-        JPanel upperSection = new JPanel(new BorderLayout(10, 10));
-        upperSection.setOpaque(false);
+        // ================= 2. MAIN CONTENT CONTAINER =================
+        JPanel mainContainer = new JPanel(new BorderLayout(0, 14));
+        mainContainer.setBackground(BG_COLOR);
+        mainContainer.setBorder(new EmptyBorder(16, 24, 18, 24));
 
-        // KPI Analytics Row (4 Cards)
-        JPanel statsPanel = new JPanel(new GridLayout(1, 4, 12, 0));
-        statsPanel.setOpaque(false);
+        // Top Stack inside Main Container (Profile Banner + KPI Row + Battle Launcher)
+        JPanel upperStack = new JPanel();
+        upperStack.setLayout(new BoxLayout(upperStack, BoxLayout.Y_AXIS));
+        upperStack.setBackground(BG_COLOR);
 
-        lblTotalAttemptsVal = new JLabel("0");
-        lblTopScorerVal = new JLabel("N/A");
-        lblMyBestVal = new JLabel("0 Marks");
-        lblAvgScoreVal = new JLabel("0.0%");
+        // 2A. Interactive Student Gamified Profile Card
+        JPanel profileStrip = createStudentProfileBanner();
+        upperStack.add(profileStrip);
+        upperStack.add(Box.createRigidArea(new Dimension(0, 12)));
 
-        statsPanel.add(createStatCard("📊 Total Battles", lblTotalAttemptsVal, new Color(41, 128, 185)));
-        statsPanel.add(createStatCard("🏆 Current Champion", lblTopScorerVal, new Color(243, 156, 18)));
-        statsPanel.add(createStatCard("⭐ Your Best Score", lblMyBestVal, new Color(39, 174, 96)));
-        statsPanel.add(createStatCard("📈 Platform Average", lblAvgScoreVal, new Color(142, 68, 173)));
+        // 2B. 4 Executive KPI Cards
+        JPanel kpiGrid = new JPanel(new GridLayout(1, 4, 14, 0));
+        kpiGrid.setBackground(BG_COLOR);
+        kpiGrid.setMaximumSize(new Dimension(Integer.MAX_VALUE, 82));
 
-        upperSection.add(statsPanel, BorderLayout.NORTH);
+        lblTotalBattlesVal = new JLabel("0");
+        lblChampionVal = new JLabel("N/A");
+        lblBestScoreVal = new JLabel("0 Marks");
+        lblPlatformAvgVal = new JLabel("0.0%");
 
-        // Quiz Setup Bar
-        JPanel setupPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 8));
-        setupPanel.setBackground(Color.WHITE);
-        setupPanel.setBorder(BorderFactory.createTitledBorder("🚀 Start New Quiz Battle"));
+        kpiGrid.add(createKpiCard("TOTAL BATTLES PLAYED", lblTotalBattlesVal, PRIMARY_COLOR));
+        kpiGrid.add(createKpiCard("CURRENT CHAMPION", lblChampionVal, WARNING_COLOR));
+        kpiGrid.add(createKpiCard("YOUR BEST SCORE", lblBestScoreVal, SUCCESS_COLOR));
+        kpiGrid.add(createKpiCard("PLATFORM AVERAGE", lblPlatformAvgVal, PURPLE_COLOR));
 
-        setupPanel.add(new JLabel("Select Topic Category:"));
-        categoryBox = new JComboBox<>(new String[]{"Java Programming", "Computer Science", "General Knowledge"});
-        categoryBox.setFont(new Font("Arial", Font.PLAIN, 13));
-        setupPanel.add(categoryBox);
+        upperStack.add(kpiGrid);
+        upperStack.add(Box.createRigidArea(new Dimension(0, 12)));
 
-        JButton btnStartQuiz = new JButton("Start Quiz Battle Now 🚀");
-        btnStartQuiz.setFont(new Font("Arial", Font.BOLD, 13));
-        btnStartQuiz.setBackground(new Color(39, 174, 96));
-        btnStartQuiz.setForeground(Color.WHITE);
-        btnStartQuiz.setFocusPainted(false);
-        setupPanel.add(btnStartQuiz);
+        // 2C. Start New Quiz Battle Action Bar
+        JPanel launchCard = createBattleLauncherCard();
+        upperStack.add(launchCard);
 
-        upperSection.add(setupPanel, BorderLayout.CENTER);
-        centerPanel.add(upperSection, BorderLayout.NORTH);
+        mainContainer.add(upperStack, BorderLayout.NORTH);
 
-        // --- Center Section: Production Leaderboard ---
-        JPanel leaderboardPanel = new JPanel(new BorderLayout(8, 8));
-        leaderboardPanel.setBackground(Color.WHITE);
-        leaderboardPanel.setBorder(BorderFactory.createTitledBorder("🏅 Live Global Leaderboard (Ranked by Score & Accuracy)"));
+        // ================= 3. LEADERBOARD & ANALYTICS TABLE SECTION =================
+        JPanel tableCard = new JPanel(new BorderLayout(0, 10));
+        tableCard.setBackground(CARD_BG);
+        tableCard.setBorder(new CompoundBorder(
+                new LineBorder(BORDER_COLOR, 1, true),
+                new EmptyBorder(14, 18, 14, 18)
+        ));
 
-        // Filter & Control Bar
-        JPanel subControlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
-        subControlPanel.setBackground(new Color(248, 250, 252));
+        // Filter & Search Toolbar
+        JPanel filterBar = new JPanel(new BorderLayout(10, 0));
+        filterBar.setBackground(CARD_BG);
 
-        txtSearch = new JTextField(14);
-        txtSearch.setToolTipText("Search by student name...");
+        JPanel filterLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        filterLeft.setBackground(CARD_BG);
 
-        filterCategoryBox = new JComboBox<>(new String[]{"All Categories", "Java Programming", "Computer Science", "General Knowledge"});
-        chkOnlyMe = new JCheckBox("My Attempts Only");
-        chkOnlyMe.setOpaque(false);
+        JLabel lblTableTitle = new JLabel("★ Live Global Leaderboard & Attempt History");
+        lblTableTitle.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        lblTableTitle.setForeground(TEXT_DARK);
 
-        chkAutoSync = new JCheckBox("⚡ Live Auto-Sync (10s)");
-        chkAutoSync.setOpaque(false);
+        JLabel lblSearch = new JLabel("   Search:");
+        lblSearch.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        lblSearch.setForeground(TEXT_MUTED);
 
-        JButton btnRefresh = new JButton("🔄 Refresh Now");
-        btnRefresh.setFont(new Font("Arial", Font.BOLD, 12));
-        btnRefresh.setBackground(new Color(41, 128, 185));
-        btnRefresh.setForeground(Color.WHITE);
-        btnRefresh.setFocusPainted(false);
+        searchField = new JTextField(14);
+        searchField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        searchField.setBorder(new CompoundBorder(
+                new LineBorder(new Color(203, 213, 225), 1, true),
+                new EmptyBorder(5, 8, 5, 8)
+        ));
+        searchField.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyReleased(KeyEvent e) {
+                loadDashboardData();
+            }
+        });
 
-        subControlPanel.add(new JLabel("🔍 Search:"));
-        subControlPanel.add(txtSearch);
-        subControlPanel.add(new JLabel("Category:"));
-        subControlPanel.add(filterCategoryBox);
-        subControlPanel.add(chkOnlyMe);
-        subControlPanel.add(chkAutoSync);
-        subControlPanel.add(btnRefresh);
+        JLabel lblCatFilter = new JLabel("Category:");
+        lblCatFilter.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        lblCatFilter.setForeground(TEXT_MUTED);
 
-        leaderboardPanel.add(subControlPanel, BorderLayout.NORTH);
+        filterCategoryBox = new JComboBox<>();
+        filterCategoryBox.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        filterCategoryBox.setBackground(Color.WHITE);
+        filterCategoryBox.addItem("All Categories");
+        List<String> cats = DatabaseDAO.getCategories();
+        for (String c : cats) filterCategoryBox.addItem(c);
+        filterCategoryBox.addActionListener(e -> loadDashboardData());
 
-        // Leaderboard JTable (Non-Editable)
-        leaderboardTable = new JTable() {
+        chkMyAttempts = new JCheckBox("My Attempts Only");
+        chkMyAttempts.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        chkMyAttempts.setForeground(TEXT_DARK);
+        chkMyAttempts.setBackground(CARD_BG);
+        chkMyAttempts.setFocusPainted(false);
+        chkMyAttempts.addActionListener(e -> loadDashboardData());
+
+        chkAutoSync = new JCheckBox("Live Auto-Sync (10s)");
+        chkAutoSync.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        chkAutoSync.setForeground(PRIMARY_COLOR);
+        chkAutoSync.setBackground(CARD_BG);
+        chkAutoSync.setFocusPainted(false);
+        chkAutoSync.addActionListener(e -> {
+            if (chkAutoSync.isSelected()) autoSyncTimer.start();
+            else autoSyncTimer.stop();
+        });
+
+        filterLeft.add(lblTableTitle);
+        filterLeft.add(lblSearch);
+        filterLeft.add(searchField);
+        filterLeft.add(lblCatFilter);
+        filterLeft.add(filterCategoryBox);
+        filterLeft.add(chkMyAttempts);
+        filterLeft.add(chkAutoSync);
+
+        // Right Toolbar Buttons (Refresh + Export CSV)
+        JPanel filterRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        filterRight.setBackground(CARD_BG);
+
+        JButton btnRefresh = createInteractiveButton("↻ Refresh", PRIMARY_COLOR, PRIMARY_HOVER, 105, 32);
+        btnRefresh.addActionListener(e -> loadDashboardData());
+
+        JButton btnExportCsv = createInteractiveButton("⬇ Export CSV", new Color(71, 85, 105), new Color(51, 65, 85), 115, 32);
+        btnExportCsv.addActionListener(e -> exportLeaderboardToCSV());
+
+        filterRight.add(btnRefresh);
+        filterRight.add(btnExportCsv);
+
+        filterBar.add(filterLeft, BorderLayout.WEST);
+        filterBar.add(filterRight, BorderLayout.EAST);
+        tableCard.add(filterBar, BorderLayout.NORTH);
+
+        // Table Setup
+        String[] columns = {"Rank / ID", "Student Name", "Category", "Total Q", "Correct", "Wrong", "Score", "Accuracy (%)", "Attempt Date"};
+        tableModel = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
-                return false; // Prevent accidental cell editing
+                return false;
             }
         };
-        leaderboardTable.setRowHeight(32);
-        leaderboardTable.setFillsViewportHeight(true);
-        leaderboardTable.setSelectionBackground(new Color(52, 152, 219));
-        leaderboardTable.setSelectionForeground(Color.WHITE);
-        leaderboardTable.getTableHeader().setFont(new Font("Arial", Font.BOLD, 13));
-        leaderboardTable.getTableHeader().setBackground(new Color(44, 62, 80));
-        leaderboardTable.getTableHeader().setForeground(Color.WHITE);
+
+        leaderboardTable = new JTable(tableModel);
+        leaderboardTable.setRowHeight(36);
+        leaderboardTable.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        leaderboardTable.setGridColor(new Color(226, 232, 240));
+        leaderboardTable.setSelectionBackground(new Color(219, 234, 254));
+        leaderboardTable.setSelectionForeground(TEXT_DARK);
+        leaderboardTable.setShowVerticalLines(true);
+        leaderboardTable.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        leaderboardTable.setToolTipText("Double-click any row to inspect detailed performance card");
+
+        // Table Header Styling
+        JTableHeader header = leaderboardTable.getTableHeader();
+        header.setPreferredSize(new Dimension(100, 38));
+        header.setDefaultRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                JLabel lbl = (JLabel) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                lbl.setBackground(HEADER_BG);
+                lbl.setForeground(Color.WHITE);
+                lbl.setFont(new Font("Segoe UI", Font.BOLD, 12));
+                lbl.setHorizontalAlignment(SwingConstants.CENTER);
+                lbl.setBorder(new MatteBorder(0, 0, 2, 1, new Color(51, 65, 85)));
+                return lbl;
+            }
+        });
+
+        // Custom Cell Renderer for Medals, (YOU) Tag & Color-Coded Percentages
+        DefaultTableCellRenderer customRenderer = new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                setHorizontalAlignment(column == 1 || column == 2 ? SwingConstants.LEFT : SwingConstants.CENTER);
+
+                String studentCell = String.valueOf(table.getValueAt(row, 1));
+                boolean isCurrentUser = studentCell.contains("(YOU)");
+
+                if (!isSelected) {
+                    if (row == 0) c.setBackground(new Color(254, 249, 195));      // Soft Gold Tint
+                    else if (row == 1) c.setBackground(new Color(241, 245, 249)); // Soft Silver Tint
+                    else if (row == 2) c.setBackground(new Color(255, 237, 213)); // Soft Bronze Tint
+                    else if (isCurrentUser) c.setBackground(new Color(239, 246, 255)); // Light Blue for Current User
+                    else c.setBackground(row % 2 == 0 ? Color.WHITE : new Color(248, 250, 252));
+                }
+
+                // Default Font & Color
+                setFont(new Font("Segoe UI", isCurrentUser || column == 0 ? Font.BOLD : Font.PLAIN, 13));
+                setForeground(TEXT_DARK);
+
+                // Highlight Accuracy Column
+                if (column == 7 && value != null) {
+                    String pctStr = value.toString().replace("%", "").trim();
+                    try {
+                        double pct = Double.parseDouble(pctStr);
+                        setFont(new Font("Segoe UI", Font.BOLD, 13));
+                        if (pct >= 75) setForeground(SUCCESS_COLOR);
+                        else if (pct >= 50) setForeground(WARNING_COLOR);
+                        else setForeground(DANGER_COLOR);
+                    } catch (NumberFormatException ignored) {}
+                }
+
+                setBorder(new EmptyBorder(0, 10, 0, 10));
+                return c;
+            }
+        };
+
+        for (int i = 0; i < leaderboardTable.getColumnCount(); i++) {
+            leaderboardTable.getColumnModel().getColumn(i).setCellRenderer(customRenderer);
+        }
+
+        // Double-Click Row to Open Performance Summary Modal
+        leaderboardTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && leaderboardTable.getSelectedRow() != -1) {
+                    showAttemptDetailsModal(leaderboardTable.getSelectedRow());
+                }
+            }
+        });
 
         JScrollPane scrollPane = new JScrollPane(leaderboardTable);
-        leaderboardPanel.add(scrollPane, BorderLayout.CENTER);
+        scrollPane.setBorder(new LineBorder(BORDER_COLOR, 1));
+        scrollPane.getViewport().setBackground(Color.WHITE);
+        tableCard.add(scrollPane, BorderLayout.CENTER);
 
-        centerPanel.add(leaderboardPanel, BorderLayout.CENTER);
-        add(centerPanel, BorderLayout.CENTER);
+        // Subtle Footer Hint Bar
+        JPanel tableFooter = new JPanel(new BorderLayout());
+        tableFooter.setBackground(CARD_BG);
+        JLabel lblHint = new JLabel("💡 Pro Tip: Double-click on any leaderboard row to inspect the candidate's attempt summary card.");
+        lblHint.setFont(new Font("Segoe UI", Font.ITALIC, 12));
+        lblHint.setForeground(TEXT_MUTED);
+        tableFooter.add(lblHint, BorderLayout.WEST);
+        tableCard.add(tableFooter, BorderLayout.SOUTH);
 
-        // Initial Data Load
-        refreshLeaderboardData(false);
+        mainContainer.add(tableCard, BorderLayout.CENTER);
+        add(mainContainer, BorderLayout.CENTER);
 
-        // --- Event Listeners for Live Filtering ---
-        txtSearch.addKeyListener(new java.awt.event.KeyAdapter() {
-            @Override
-            public void keyReleased(java.awt.event.KeyEvent e) {
-                applyTableFilters();
-            }
-        });
+        // Auto-Sync Timer (every 10 seconds)
+        autoSyncTimer = new Timer(10000, e -> loadDashboardData());
 
-        filterCategoryBox.addActionListener(e -> applyTableFilters());
-        chkOnlyMe.addActionListener(e -> applyTableFilters());
-        btnRefresh.addActionListener(e -> refreshLeaderboardData(true));
-
-        // Auto-Sync Timer (Every 10 Seconds)
-        autoRefreshTimer = new Timer(10000, e -> refreshLeaderboardData(false));
-        chkAutoSync.addActionListener(e -> {
-            if (chkAutoSync.isSelected()) {
-                autoRefreshTimer.start();
-            } else {
-                autoRefreshTimer.stop();
-            }
-        });
-
-        // Start Quiz Action with Safe Null/Empty Check
-        btnStartQuiz.addActionListener(e -> {
-            String selectedCat = (String) categoryBox.getSelectedItem();
-            List<Question> questions = DatabaseDAO.getQuestionsByCategory(selectedCat);
-
-            if (questions == null || questions.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "No questions found for this category! Please ask Admin to add questions.", "Warning", JOptionPane.WARNING_MESSAGE);
-            } else {
-                if (autoRefreshTimer != null) autoRefreshTimer.stop();
-                dispose();
-                new QuizEngineFrame(player, selectedCat, questions).setVisible(true);
-            }
-        });
+        // Initial Load
+        loadDashboardData();
     }
 
-    // Helper method to build KPI summary cards
-    private JPanel createStatCard(String title, JLabel valueLabel, Color accentColor) {
-        JPanel card = new JPanel(new BorderLayout(4, 4));
-        card.setBackground(Color.WHITE);
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 4, 0, 0, accentColor),
-                new EmptyBorder(10, 14, 10, 14)
+    // ================= UI BUILDER HELPERS =================
+
+    private JPanel createAvatarBadge(String name) {
+        String initials = name != null && !name.trim().isEmpty()
+                ? name.trim().substring(0, 1).toUpperCase()
+                : "S";
+
+        JPanel badge = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(PRIMARY_COLOR);
+                g2.fillOval(0, 0, 42, 42);
+                g2.setColor(new Color(147, 197, 253));
+                g2.setStroke(new BasicStroke(2f));
+                g2.drawOval(1, 1, 40, 40);
+            }
+        };
+        badge.setPreferredSize(new Dimension(42, 42));
+        badge.setOpaque(false);
+        badge.setLayout(new GridBagLayout());
+
+        JLabel lblInit = new JLabel(initials);
+        lblInit.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        lblInit.setForeground(Color.WHITE);
+        badge.add(lblInit);
+        return badge;
+    }
+
+    private JPanel createStudentProfileBanner() {
+        JPanel banner = new JPanel(new BorderLayout(20, 0));
+        banner.setBackground(PROFILE_BG);
+        banner.setMaximumSize(new Dimension(Integer.MAX_VALUE, 74));
+        banner.setBorder(new CompoundBorder(
+                new LineBorder(new Color(51, 65, 85), 1, true),
+                new EmptyBorder(12, 22, 12, 22)
+        ));
+
+        // Left: Student Identity & Dynamic Rank Title
+        JPanel leftInfo = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 2));
+        leftInfo.setOpaque(false);
+
+        lblRankBadge = new JLabel(" ★ RISING CONTENDER ");
+        lblRankBadge.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        lblRankBadge.setForeground(new Color(253, 224, 71)); // Gold text
+        lblRankBadge.setOpaque(true);
+        lblRankBadge.setBackground(new Color(51, 65, 85));
+        lblRankBadge.setBorder(new CompoundBorder(
+                new LineBorder(new Color(234, 179, 8), 1, true),
+                new EmptyBorder(5, 12, 5, 12)
+        ));
+
+        JPanel textCol = new JPanel();
+        textCol.setLayout(new BoxLayout(textCol, BoxLayout.Y_AXIS));
+        textCol.setOpaque(false);
+
+        JLabel lblProfileHeading = new JLabel("Student Performance Profile: " + player.getUsername());
+        lblProfileHeading.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        lblProfileHeading.setForeground(Color.WHITE);
+
+        lblStudentStatsSub = new JLabel("Attempts: 0  |  Personal Best: 0 Marks  |  Keep practicing to reach #1!");
+        lblStudentStatsSub.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        lblStudentStatsSub.setForeground(new Color(148, 163, 184));
+
+        textCol.add(lblProfileHeading);
+        textCol.add(Box.createRigidArea(new Dimension(0, 2)));
+        textCol.add(lblStudentStatsSub);
+
+        leftInfo.add(lblRankBadge);
+        leftInfo.add(textCol);
+
+        // Right: Personal Accuracy Progress Meter
+        JPanel rightMeter = new JPanel();
+        rightMeter.setLayout(new BoxLayout(rightMeter, BoxLayout.Y_AXIS));
+        rightMeter.setOpaque(false);
+        rightMeter.setPreferredSize(new Dimension(260, 44));
+
+        lblPersonalAvg = new JLabel("Your Overall Accuracy: 0.0%");
+        lblPersonalAvg.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        lblPersonalAvg.setForeground(new Color(226, 232, 240));
+        lblPersonalAvg.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        accuracyMeter = new JProgressBar(0, 100);
+        accuracyMeter.setValue(0);
+        accuracyMeter.setStringPainted(false);
+        accuracyMeter.setForeground(SUCCESS_COLOR);
+        accuracyMeter.setBackground(new Color(51, 65, 85));
+        accuracyMeter.setBorderPainted(false);
+        accuracyMeter.setPreferredSize(new Dimension(250, 10));
+        accuracyMeter.setMaximumSize(new Dimension(250, 10));
+        accuracyMeter.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        rightMeter.add(lblPersonalAvg);
+        rightMeter.add(Box.createRigidArea(new Dimension(0, 6)));
+        rightMeter.add(accuracyMeter);
+
+        banner.add(leftInfo, BorderLayout.WEST);
+        banner.add(rightMeter, BorderLayout.EAST);
+        return banner;
+    }
+
+    private JPanel createKpiCard(String title, JLabel valueLabel, Color accentColor) {
+        JPanel card = new JPanel(new BorderLayout());
+        card.setBackground(CARD_BG);
+        card.setBorder(new CompoundBorder(
+                new MatteBorder(0, 4, 0, 0, accentColor),
+                new CompoundBorder(
+                        new LineBorder(BORDER_COLOR, 1, false),
+                        new EmptyBorder(12, 16, 12, 16)
+                )
         ));
 
         JLabel lblTitle = new JLabel(title);
-        lblTitle.setFont(new Font("Arial", Font.BOLD, 12));
-        lblTitle.setForeground(new Color(127, 140, 141));
+        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        lblTitle.setForeground(TEXT_MUTED);
 
-        valueLabel.setFont(new Font("Arial", Font.BOLD, 16));
-        valueLabel.setForeground(new Color(44, 62, 80));
+        valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 21));
+        valueLabel.setForeground(TEXT_DARK);
 
         card.add(lblTitle, BorderLayout.NORTH);
         card.add(valueLabel, BorderLayout.CENTER);
         return card;
     }
 
-    // Combined Multi-Criteria Filter (Search Text + Category Dropdown + "My Attempts Only")
-    private void applyTableFilters() {
-        if (rowSorter == null) return;
+    private JPanel createBattleLauncherCard() {
+        JPanel card = new JPanel(new BorderLayout(15, 0));
+        card.setBackground(CARD_BG);
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 68));
+        card.setBorder(new CompoundBorder(
+                new LineBorder(BORDER_COLOR, 1, true),
+                new EmptyBorder(12, 20, 12, 20)
+        ));
 
-        List<RowFilter<Object, Object>> filters = new ArrayList<>();
+        // Left: Topic Selection & Start Button
+        JPanel leftControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 2));
+        leftControls.setBackground(CARD_BG);
 
-        String searchText = txtSearch.getText().trim();
-        if (!searchText.isEmpty()) {
-            filters.add(RowFilter.regexFilter("(?i)" + searchText, 1, 2)); // Search in Name & Category
-        }
+        JLabel lblIconTitle = new JLabel("► Start New Quiz Battle:");
+        lblIconTitle.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        lblIconTitle.setForeground(PRIMARY_COLOR);
 
-        String selectedCat = (String) filterCategoryBox.getSelectedItem();
-        if (selectedCat != null && !selectedCat.equals("All Categories")) {
-            filters.add(RowFilter.regexFilter("^" + selectedCat + "$", 2)); // Exact match on Category column
-        }
+        JLabel lblSelect = new JLabel("Select Topic Category:");
+        lblSelect.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lblSelect.setForeground(TEXT_DARK);
 
-        if (chkOnlyMe.isSelected()) {
-            filters.add(RowFilter.regexFilter("(?i)^" + player.getUsername() + "$", 1)); // Exact match on Student Name
-        }
+        categoryDropdown = new JComboBox<>();
+        categoryDropdown.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        categoryDropdown.setBackground(new Color(248, 250, 252));
+        categoryDropdown.setPreferredSize(new Dimension(210, 36));
 
-        if (filters.isEmpty()) {
-            rowSorter.setRowFilter(null);
+        List<String> categories = DatabaseDAO.getCategories();
+        if (categories.isEmpty()) {
+            categoryDropdown.addItem("Java Programming");
+            categoryDropdown.addItem("Computer Science");
         } else {
-            rowSorter.setRowFilter(RowFilter.andFilter(filters));
+            for (String cat : categories) {
+                categoryDropdown.addItem(cat);
+            }
         }
+
+        JButton btnStartQuiz = createInteractiveButton("Start Quiz Battle Now ►", SUCCESS_COLOR, SUCCESS_HOVER, 210, 36);
+        btnStartQuiz.addActionListener(e -> startSelectedQuiz());
+
+        leftControls.add(lblIconTitle);
+        leftControls.add(lblSelect);
+        leftControls.add(categoryDropdown);
+        leftControls.add(btnStartQuiz);
+
+        // Right: Exam Rules Info Badge
+        JPanel rightInfo = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 6));
+        rightInfo.setBackground(CARD_BG);
+
+        JLabel lblRules = new JLabel("⏱ 15s / Question   •   🔀 Shuffled Questions & Options   •   📄 Instant PDF Report");
+        lblRules.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        lblRules.setForeground(TEXT_MUTED);
+        rightInfo.add(lblRules);
+
+        card.add(leftControls, BorderLayout.WEST);
+        card.add(rightInfo, BorderLayout.EAST);
+        return card;
     }
 
-    // Reloads Leaderboard Data & Dynamically Computes KPI Metrics
-    private void refreshLeaderboardData(boolean showPopup) {
-        DefaultTableModel model = DatabaseDAO.getLeaderboardModel();
-        leaderboardTable.setModel(model);
+    private JButton createInteractiveButton(String text, Color normalBg, Color hoverBg, int width, int height) {
+        JButton btn = new JButton(text);
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        btn.setBackground(normalBg);
+        btn.setForeground(Color.WHITE);
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(false);
+        btn.setOpaque(true);
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btn.setPreferredSize(new Dimension(width, height));
 
-        rowSorter = new TableRowSorter<>(model);
-        leaderboardTable.setRowSorter(rowSorter);
+        btn.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                btn.setBackground(hoverBg);
+            }
+            @Override
+            public void mouseExited(MouseEvent e) {
+                btn.setBackground(normalBg);
+            }
+        });
+        return btn;
+    }
 
-        DashboardLeaderboardRenderer renderer = new DashboardLeaderboardRenderer(player.getUsername());
-        for (int i = 0; i < leaderboardTable.getColumnCount(); i++) {
-            leaderboardTable.getColumnModel().getColumn(i).setCellRenderer(renderer);
+    // ================= DATA LOADING & ANALYTICS ENGINE =================
+
+    private void startSelectedQuiz() {
+        String selectedCategory = (String) categoryDropdown.getSelectedItem();
+        if (selectedCategory == null || selectedCategory.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please select a quiz category first!", "Warning", JOptionPane.WARNING_MESSAGE);
+            return;
         }
 
-        // Calculate KPI Metrics from Table Model
-        int rowCount = model.getRowCount();
-        lblTotalAttemptsVal.setText(String.valueOf(rowCount));
+        List<Question> questions = DatabaseDAO.getQuestionsByCategory(selectedCategory);
+        if (questions.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No questions found in '" + selectedCategory + "' category!", "Empty Category", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
 
-        if (rowCount > 0) {
-            String topStudent = String.valueOf(model.getValueAt(0, 1));
-            String topScore = String.valueOf(model.getValueAt(0, 6));
-            lblTopScorerVal.setText(topStudent + " (" + topScore + ")");
+        if (autoSyncTimer != null) autoSyncTimer.stop();
+        dispose();
+        new QuizEngineFrame(player, selectedCategory, questions).setVisible(true);
+    }
 
-            int myBest = 0;
-            double totalPct = 0.0;
+    private void loadDashboardData() {
+        tableModel.setRowCount(0);
+        List<String[]> allResults = DatabaseDAO.getLeaderboard();
 
-            for (int i = 0; i < rowCount; i++) {
-                String student = String.valueOf(model.getValueAt(i, 1));
-                int score = Integer.parseInt(String.valueOf(model.getValueAt(i, 6)));
-                String pctStr = String.valueOf(model.getValueAt(i, 7)).replace("%", "").trim();
+        int totalBattles = allResults.size();
+        String championName = "No Attempts Yet";
+        int myBestScore = 0;
+        int myAttemptsCount = 0;
+        double myTotalPct = 0.0;
+        double platformTotalPct = 0.0;
 
-                if (student.equalsIgnoreCase(player.getUsername()) && score > myBest) {
-                    myBest = score;
+        if (!allResults.isEmpty()) {
+            String[] topRow = allResults.get(0);
+            championName = topRow[1] + " (" + topRow[6] + " Marks)";
+        }
+
+        String searchText = searchField.getText().trim().toLowerCase();
+        String selectedCatFilter = (String) filterCategoryBox.getSelectedItem();
+        boolean onlyMine = chkMyAttempts.isSelected();
+
+        int rankCounter = 1;
+        for (String[] row : allResults) {
+            // Expected columns: 0:id, 1:username, 2:category, 3:total_q, 4:correct, 5:wrong, 6:score, 7:percentage, 8:date
+            String uname = row[1];
+            String cat = row[2];
+            int scoreVal = 0;
+            double pctVal = 0.0;
+
+            try {
+                scoreVal = Integer.parseInt(row[6]);
+                pctVal = Double.parseDouble(row[7].replace("%", "").trim());
+            } catch (Exception ignored) {}
+
+            platformTotalPct += pctVal;
+
+            boolean isMe = uname.equalsIgnoreCase(player.getUsername());
+            if (isMe) {
+                myAttemptsCount++;
+                myTotalPct += pctVal;
+                if (scoreVal > myBestScore) {
+                    myBestScore = scoreVal;
                 }
-                try {
-                    totalPct += Double.parseDouble(pctStr);
-                } catch (NumberFormatException ignored) {}
             }
 
-            lblMyBestVal.setText(myBest + " Marks");
-            lblAvgScoreVal.setText(String.format("%.1f%%", totalPct / rowCount));
-        } else {
-            lblTopScorerVal.setText("No records yet");
-            lblMyBestVal.setText("0 Marks");
-            lblAvgScoreVal.setText("0.0%");
+            // Apply UI Filters
+            boolean matchesSearch = searchText.isEmpty()
+                    || uname.toLowerCase().contains(searchText)
+                    || cat.toLowerCase().contains(searchText);
+            boolean matchesCat = selectedCatFilter == null
+                    || selectedCatFilter.equals("All Categories")
+                    || cat.equalsIgnoreCase(selectedCatFilter);
+            boolean matchesMine = !onlyMine || isMe;
+
+            if (matchesSearch && matchesCat && matchesMine) {
+                String rankBadge;
+                if (rankCounter == 1) rankBadge = "★ 1st";
+                else if (rankCounter == 2) rankBadge = "★ 2nd";
+                else if (rankCounter == 3) rankBadge = "★ 3rd";
+                else rankBadge = "#" + rankCounter;
+
+                String displayUser = isMe ? uname + " ★ (YOU)" : uname;
+                String formattedPct = String.format("%.2f%%", pctVal);
+
+                tableModel.addRow(new Object[]{
+                        rankBadge, displayUser, cat, row[3], row[4], row[5], row[6], formattedPct, row[8]
+                });
+            }
+            rankCounter++;
         }
 
-        // Preserve any active search/category filters after refresh
-        applyTableFilters();
+        // Update Top KPI Cards
+        double platformAvg = totalBattles > 0 ? (platformTotalPct / totalBattles) : 0.0;
+        lblTotalBattlesVal.setText(String.valueOf(totalBattles));
+        lblChampionVal.setText(championName);
+        lblBestScoreVal.setText(myBestScore + " Marks");
+        lblPlatformAvgVal.setText(String.format("%.1f%%", platformAvg));
 
-        if (showPopup) {
-            JOptionPane.showMessageDialog(this, "Leaderboard synced with live database!", "Live Update", JOptionPane.INFORMATION_MESSAGE);
+        // Update Gamified Profile Strip
+        double myAvgPct = myAttemptsCount > 0 ? (myTotalPct / myAttemptsCount) : 0.0;
+        lblPersonalAvg.setText(String.format("Your Overall Accuracy: %.1f%%", myAvgPct));
+        accuracyMeter.setValue((int) Math.round(myAvgPct));
+
+        if (myAvgPct >= 80) {
+            lblRankBadge.setText(" ★ GRANDMASTER TIER ");
+            accuracyMeter.setForeground(SUCCESS_COLOR);
+        } else if (myAvgPct >= 50) {
+            lblRankBadge.setText(" ▲ PRO CONTENDER ");
+            accuracyMeter.setForeground(WARNING_COLOR);
+        } else if (myAttemptsCount > 0) {
+            lblRankBadge.setText(" ● APPRENTICE TIER ");
+            accuracyMeter.setForeground(PRIMARY_COLOR);
+        } else {
+            lblRankBadge.setText(" ★ NEW CHALLENGER ");
+            accuracyMeter.setForeground(PRIMARY_COLOR);
+        }
+
+        lblStudentStatsSub.setText("Your Attempts: " + myAttemptsCount
+                + "   |   Personal Best: " + myBestScore + " Marks"
+                + "   |   Average Accuracy: " + String.format("%.1f%%", myAvgPct));
+    }
+
+    // ================= INTERACTIVE DRILL-DOWN MODAL & CSV EXPORT =================
+
+    private void showAttemptDetailsModal(int row) {
+        String rank = String.valueOf(leaderboardTable.getValueAt(row, 0));
+        String student = String.valueOf(leaderboardTable.getValueAt(row, 1));
+        String category = String.valueOf(leaderboardTable.getValueAt(row, 2));
+        String totalQ = String.valueOf(leaderboardTable.getValueAt(row, 3));
+        String correct = String.valueOf(leaderboardTable.getValueAt(row, 4));
+        String wrong = String.valueOf(leaderboardTable.getValueAt(row, 5));
+        String score = String.valueOf(leaderboardTable.getValueAt(row, 6));
+        String accuracy = String.valueOf(leaderboardTable.getValueAt(row, 7));
+        String date = String.valueOf(leaderboardTable.getValueAt(row, 8));
+
+        String html = "<html><body style='width: 340px; font-family: Segoe UI; padding: 6px;'>"
+                + "<h3 style='margin:0; color:#1e293b;'>Attempt Performance Breakdown</h3>"
+                + "<hr style='border:1px solid #cbd5e1;'>"
+                + "<p><b>Leaderboard Rank:</b> " + rank + "</p>"
+                + "<p><b>Candidate:</b> " + student + "</p>"
+                + "<p><b>Topic Category:</b> " + category + "</p>"
+                + "<p><b>Total Questions:</b> " + totalQ + "</p>"
+                + "<p style='color:#16a34a;'><b>Correct Answers:</b> " + correct + "</p>"
+                + "<p style='color:#dc2626;'><b>Wrong / Skipped:</b> " + wrong + "</p>"
+                + "<p style='color:#2563eb; font-size:14px;'><b>Final Score:</b> " + score + " Marks (" + accuracy + ")</p>"
+                + "<p style='color:#64748b; font-size:11px;'><b>Timestamp:</b> " + date + "</p>"
+                + "</body></html>";
+
+        JOptionPane.showMessageDialog(this, new JLabel(html), "Candidate Attempt Summary", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void exportLeaderboardToCSV() {
+        if (tableModel.getRowCount() == 0) {
+            JOptionPane.showMessageDialog(this, "No data available to export!", "Warning", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Export Leaderboard Data as CSV");
+        chooser.setSelectedFile(new File("SmartQuiz_Leaderboard_" + player.getUsername().replaceAll("\\s+", "_") + ".csv"));
+
+        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File file = chooser.getSelectedFile();
+            if (!file.getName().toLowerCase().endsWith(".csv")) {
+                file = new File(file.getAbsolutePath() + ".csv");
+            }
+
+            try (FileWriter fw = new FileWriter(file)) {
+                for (int i = 0; i < tableModel.getColumnCount(); i++) {
+                    fw.write("\"" + tableModel.getColumnName(i) + "\"" + (i < tableModel.getColumnCount() - 1 ? "," : "\n"));
+                }
+                for (int r = 0; r < tableModel.getRowCount(); r++) {
+                    for (int c = 0; c < tableModel.getColumnCount(); c++) {
+                        String val = String.valueOf(tableModel.getValueAt(r, c)).replace("\"", "\"\"");
+                        fw.write("\"" + val + "\"" + (c < tableModel.getColumnCount() - 1 ? "," : "\n"));
+                    }
+                }
+                JOptionPane.showMessageDialog(this, "Leaderboard exported successfully to:\n" + file.getAbsolutePath(), "Export Success", JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Export Error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 }
