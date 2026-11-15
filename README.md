@@ -1,4 +1,4 @@
-# 🚀 Smart Quiz Battle System (Enterprise Edition)
+# 🚀 Smart Quiz Battle System 
 
 The **Smart Quiz Battle System** is a modern, production-level Java desktop application designed for interactive assessments, real-time quizzes, and comprehensive student performance tracking. It features an enterprise-grade UI built entirely with Java Swing and a robust MySQL backend.
 
